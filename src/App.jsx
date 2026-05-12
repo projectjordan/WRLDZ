@@ -15,13 +15,23 @@ const GlobalQuickAdd = ({ isOpen, onClose, onAdd }) => {
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    const newEntry = { id: Date.now().toString(), name, description: "", content: "", type: "General", modules: {} };
-    onAdd(type, newEntry);
-    setName("");
-    onClose();
+  e.preventDefault();
+  if (!name.trim()) return;
+  const newEntry = { 
+    id: Date.now().toString(), 
+    name, 
+    description: "", 
+    age: "",         // Keep fields consistent
+    profession: "",  // Keep fields consistent
+    groupIds: [],    // CRITICAL: Ensure this is here
+    content: "", 
+    type: "General", 
+    modules: {} 
   };
+  onAdd(type, newEntry);
+  setName("");
+  onClose();
+};
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -58,13 +68,26 @@ const StoryBeat = ({ beat, index, searchQuery, linkRegistry, navigateToEntry, up
   return (
     <div id={beat.id} className="timeline-item card">
       <div className="timeline-marker" />
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-        <small style={{ color: 'var(--accent)', fontWeight: 'bold' }}>BEAT {index + 1}</small>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <small style={{ color: 'var(--accent)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+            BEAT {index + 1}:
+          </small>
+          {/* ADDED: This allows you to see and edit the Title (name) */}
+          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
+            <EditableRow 
+              item={beat} 
+              field="name" 
+              placeholder="Untitiled Beat"
+              searchQuery={searchQuery}
+              onSave={(d) => updateEntry('story', beat.id, d)} 
+            />
+          </h3>
+        </div>
         <button className="card-delete" style={{ position: 'static', fontSize: '1rem' }} onClick={() => deleteEntry('story', beat.id)}>×</button>
       </div>
 
       {!isExpanded && isLong ? (
-        /* Preview Mode: Still renders links via HighlightedText! */
         <div className="beat-preview" onClick={() => setIsExpanded(true)}>
           <HighlightedText 
             text={content.substring(0, 200) + "..."} 
@@ -74,7 +97,6 @@ const StoryBeat = ({ beat, index, searchQuery, linkRegistry, navigateToEntry, up
           <button className="expand-btn">Read More</button>
         </div>
       ) : (
-        /* Expanded/Edit Mode: Standard linking logic */
         <>
           <EditableRow 
             item={beat} 
@@ -150,8 +172,19 @@ const EditableRow = ({ item, onSave, field = "name", isMultiline = false, label 
   const [value, setValue] = useState("");
   const [showLinkMenu, setShowLinkMenu] = useState(false);
 
-  useEffect(() => {
-    setValue(item[field] || item.bio || item.description || item.content || "");
+  // 1. Dynamic Filtering: This ensures the menu shows what you're actually looking for
+  const filteredLinks = showLinkMenu 
+    ? linkRegistry.filter(link => {
+        const parts = value.split('@');
+        const lastPart = parts[parts.length - 1].toLowerCase();
+        return link.name.toLowerCase().includes(lastPart);
+      })
+    : [];
+
+useEffect(() => {
+    // ONLY set the value to the specific field we asked for.
+    // This stops the Title from accidentally showing the Bio text.
+    setValue(item[field] || "");
   }, [item, field]);
 
   const save = () => {
@@ -163,16 +196,21 @@ const EditableRow = ({ item, onSave, field = "name", isMultiline = false, label 
   const handleChange = (e) => {
     const newValue = e.target.value;
     setValue(newValue);
-    setShowLinkMenu(newValue.endsWith('@'));
+    
+    // 2. Open if user types @, keep open while they type search term
+    // Only closes if @ is removed
+    setShowLinkMenu(newValue.includes('@'));
   };
 
   const insertLink = (linkable) => {
-  const prefix = value.slice(0, -1); 
-  // This line handles the actual formatting
-  const newValue = `${prefix}[[${linkable.type}:${linkable.id}|${linkable.name}]] `;
-  setValue(newValue);
-  setShowLinkMenu(false);
-};
+    // 3. Find the LAST @ to replace it correctly
+    const lastAtIndex = value.lastIndexOf('@');
+    const prefix = value.slice(0, lastAtIndex); 
+    const newValue = `${prefix}[[${linkable.type}:${linkable.id}|${linkable.name}]] `;
+    
+    setValue(newValue);
+    setShowLinkMenu(false);
+  };
 
   return (
     <div className="editable-wrapper">
@@ -196,10 +234,16 @@ const EditableRow = ({ item, onSave, field = "name", isMultiline = false, label 
               onKeyDown={(e) => e.key === 'Enter' && save()} 
             />
           )}
-          {showLinkMenu && (
+
+          {/* 4. Only show menu if we actually have matches */}
+          {showLinkMenu && filteredLinks.length > 0 && (
             <div className="link-selector-dropdown">
-              {linkRegistry.map((linkable) => (
-                <div key={linkable.id} className="link-option" onMouseDown={(e) => { e.preventDefault(); insertLink(linkable); }}>
+              {filteredLinks.map((linkable) => (
+                <div 
+                  key={linkable.id} 
+                  className="link-option" 
+                  onMouseDown={(e) => { e.preventDefault(); insertLink(linkable); }}
+                >
                   <span>{linkable.name}</span>
                   <span style={{fontSize:'0.7rem', color:'var(--accent)'}}>{linkable.type}</span>
                 </div>
@@ -211,13 +255,80 @@ const EditableRow = ({ item, onSave, field = "name", isMultiline = false, label 
         <div className="editable-display-trigger" onClick={() => setIsEditing(true)} style={{display:'flex', alignItems:'baseline'}}>
           {label && <span style={{color:'var(--accent)', marginRight:'8px', fontWeight:'600'}}>{label}:</span>}
           <span className="display-text">
-            {/* THIS PART IS CRITICAL: It turns the code into clickable links */}
             <HighlightedText text={String(value)} highlight={searchQuery} onLinkClick={onLinkClick} />
             {!value && <em style={{ opacity: 0.3 }}>Add {field}...</em>}
           </span>
           <EditIcon />
         </div>
       )}
+    </div>
+  );
+};
+
+const GroupTags = ({ character, allGroups, onAddGroup, onRemoveGroup, onCreateGroup }) => {
+  const [query, setQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Filter groups character ISN'T in yet
+  const suggestions = allGroups.filter(g => 
+    !character.groupIds?.includes(g.id) && 
+    g.name.toLowerCase().includes(query.toLowerCase())
+  );
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && query.trim()) {
+      e.preventDefault();
+      const existing = allGroups.find(g => g.name.toLowerCase() === query.toLowerCase());
+      if (existing) {
+        onAddGroup(character.id, existing.id);
+      } else {
+        onCreateGroup(character.id, query.trim());
+      }
+      setQuery("");
+      setShowSuggestions(false);
+    }
+  };
+
+  return (
+    <div className="group-tags-container">
+      <div className="tag-list">
+        {character.groupIds?.map(gid => {
+          const group = allGroups.find(g => g.id === gid);
+          return (
+            <span key={gid} className="group-tag">
+              {group?.name}
+              <button onClick={() => onRemoveGroup(character.id, gid)}>×</button>
+            </span>
+          );
+        })}
+      </div>
+      
+      <div style={{position: 'relative'}}>
+        <input 
+          type="text" 
+          placeholder="Assign group..." 
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); }}
+          onKeyDown={handleKeyDown}
+          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+          className="search-input tag-input"
+        />
+        
+        {showSuggestions && query && (
+          <div className="link-selector-dropdown">
+            {suggestions.map(g => (
+              <div key={g.id} className="link-option" onMouseDown={() => onAddGroup(character.id, g.id)}>
+                {g.name}
+              </div>
+            ))}
+            {!allGroups.find(g => g.name.toLowerCase() === query.toLowerCase()) && (
+              <div className="link-option" style={{color: 'var(--accent)'}} onMouseDown={() => onCreateGroup(character.id, query)}>
+                + Create "{query}"
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -232,8 +343,11 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [focusedGroupId, setFocusedGroupId] = useState(null);
 
   const activeWorld = worlds.find(w => w.id === selectedWorldId);
+
+  
 
   // 1. Persist to LocalStorage
   useEffect(() => {
@@ -260,11 +374,16 @@ function App() {
   }, []);
 
   // 3. Link Registry (Must be defined before navigateToEntry)
-  const linkRegistry = activeWorld ? [
+const linkRegistry = activeWorld ? [
     ...activeWorld.data.characters.map(c => ({ id: c.id, name: c.name || "Unnamed", type: 'char' })),
     ...activeWorld.data.locations.map(l => ({ id: l.id, name: l.name || "Unnamed", type: 'loc' })),
-    ...activeWorld.data.lore.map(l => ({ id: l.id, name: l.name || l.title || "Unnamed", type: 'lore' })),
-    ...activeWorld.data.story.map((s, i) => ({ id: s.id, name: `Beat ${i + 1}`, type: 'story' }))
+    ...activeWorld.data.lore.map(l => ({ id: l.id, name: l.name || "Unnamed", type: 'lore' })),
+    // Updated Story Logic:
+    ...activeWorld.data.story.map((s, i) => ({ 
+      id: s.id, 
+      name: s.name || `Beat ${i + 1}`, // Show the title if it exists, otherwise number it
+      type: 'story' 
+    }))
   ] : [];
 
   // 4. Navigation Logic
@@ -291,15 +410,25 @@ function App() {
   };
 
   // 5. Data Management Functions
-  const updateEntry = (category, itemId, updatedData) => {
-    setWorlds(prev => prev.map(w => w.id === selectedWorldId ? 
-      { ...w, data: { ...w.data, [category]: w.data[category].map(i => i.id === itemId ? { ...i, ...updatedData } : i) } } : w));
-  };
+ const updateEntry = (category, itemId, updatedData) => {
+  setWorlds(prev => prev.map(w => w.id === selectedWorldId ? 
+    { 
+      ...w, 
+      data: { 
+        ...w.data, 
+        [category]: w.data[category].map(i => 
+          i.id === itemId 
+            ? { ...i, ...updatedData } // Creates a shallow copy of the item
+            : i
+        ) 
+      } 
+    } : w));
+};
 
-  const addToActiveWorld = (category, item) => {
-    setWorlds(prev => prev.map(w => w.id === selectedWorldId ? 
-      { ...w, data: { ...w.data, [category]: [...w.data[category], item] } } : w));
-  };
+const addToActiveWorld = (category, item) => {
+  setWorlds(prev => prev.map(w => w.id === selectedWorldId ? 
+    { ...w, data: { ...w.data, [category]: [...w.data[category], { ...item }] } } : w));
+};
 
   const deleteEntry = (category, itemId) => {
     if (!confirm("Delete this entry?")) return;
@@ -341,12 +470,73 @@ function App() {
     reader.readAsText(file);
   };
 
+const addCharacterToGroup = (charId, groupId) => {
+  setWorlds(prev => prev.map(w => w.id === selectedWorldId ? {
+    ...w,
+    data: {
+      ...w.data,
+      characters: w.data.characters.map(c => 
+        c.id === charId 
+          ? { ...c, groupIds: [...(c.groupIds || []), groupId] } // The [...] creates a NEW array
+          : c
+      )
+    }
+  } : w));
+};
+
+const deleteGroup = (groupId) => {
+  setWorlds(prev => prev.map(w => w.id === selectedWorldId ? {
+    ...w,
+    data: {
+      ...w.data,
+      // Remove from global groups list
+      groups: w.data.groups.filter(g => g.id !== groupId),
+      // Remove the ID from all characters
+      characters: w.data.characters.map(c => ({
+        ...c,
+        groupIds: (c.groupIds || []).filter(id => id !== groupId)
+      }))
+    }
+  } : w));
+  
+  // Return to "All Characters" view since the group no longer exists
+  setFocusedGroupId(null);
+};
+
+const createGroupAndAssign = (charId, groupName) => {
+  const newGroupId = Date.now().toString();
+  const newGroup = { id: newGroupId, name: groupName, description: "" };
+
+  setWorlds(prev => prev.map(w => w.id === selectedWorldId ? {
+    ...w,
+    data: {
+      ...w.data,
+      groups: [...(w.data.groups || []), newGroup],
+      characters: w.data.characters.map(c => 
+        c.id === charId ? { ...c, groupIds: [...(c.groupIds || []), newGroupId] } : c
+      )
+    }
+  } : w));
+};
+
+const removeCharacterFromGroup = (charId, groupId) => {
+  setWorlds(prev => prev.map(w => w.id === selectedWorldId ? {
+    ...w,
+    data: {
+      ...w.data,
+      characters: w.data.characters.map(c => 
+        c.id === charId ? { ...c, groupIds: c.groupIds.filter(id => id !== groupId) } : c
+      )
+    }
+  } : w));
+};
+
   // 6. Return Statement
   return (
     <div className="app-layout">
       <aside className="sidebar">
         <h1>World Builder</h1>
-        <CreateWorldForm onAddWorld={(w) => setWorlds(prev => [...prev, { ...w, modules: { characters: true, locations: true, lore: true, story: true }, data: { characters: [], locations: [], lore: [], story: [] } }])} />
+        <CreateWorldForm onAddWorld={(w) => setWorlds(prev => [...prev, { ...w, modules: { characters: true, locations: true, lore: true, story: true }, data: { characters: [], locations: [], lore: [], story: [], groups: [] } }])} />
         <div className="world-list-container">
           {worlds.map(world => (
             <div key={world.id} className={`world-item ${selectedWorldId === world.id ? 'active' : ''}`} onClick={() => setSelectedWorldId(world.id)}>
@@ -413,18 +603,100 @@ function App() {
                 <div className="module-content">
                   {selectedModule === "characters" && (
                     <>
-                      <CharacterForm onAddCharacter={(c) => addToActiveWorld('characters', c)} />
-                      <div className="grid">
-                        {activeWorld.data.characters.map(char => (
-                          <div key={char.id} id={char.id} className="card">
-                            <button className="card-delete" onClick={() => deleteEntry('characters', char.id)}>×</button>
-                            <h3><EditableRow item={char} field="name" searchQuery={searchQuery} linkRegistry={linkRegistry} onLinkClick={navigateToEntry} onSave={(d) => updateEntry('characters', char.id, d)} /></h3>
-                            <div className="card-bio"><EditableRow item={char} field="description" isMultiline={true} searchQuery={searchQuery} linkRegistry={linkRegistry} onLinkClick={navigateToEntry} onSave={(d) => updateEntry('characters', char.id, d)} /></div>
-                          </div>
+                      <div className="group-filter-bar">
+                        <button className={!focusedGroupId ? "active" : ""} onClick={() => setFocusedGroupId(null)}>All Characters</button>
+                        {(activeWorld.data.groups || []).map(group => (
+                          <button key={group.id} className={focusedGroupId === group.id ? "active-group" : ""} onClick={() => setFocusedGroupId(group.id)}>👥 {group.name}</button>
                         ))}
                       </div>
+
+                      {focusedGroupId && (
+  <div className="group-info-header card" style={{borderStyle: 'dashed', marginBottom: '20px'}}>
+    <div style={{display:'flex', justifyContent:'space-between', alignItems: 'center'}}>
+      <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
+        <h2 style={{margin:0, color:'var(--accent)'}}>
+          {activeWorld.data.groups.find(g => g.id === focusedGroupId)?.name}
+        </h2>
+        {/* NEW: Delete Group Button */}
+        <button 
+          onClick={() => {
+            if(confirm("Delete this group? Characters won't be deleted, but they will be removed from this group.")) {
+              deleteGroup(focusedGroupId);
+            }
+          }}
+          style={{background: 'rgba(255,0,0,0.1)', color: '#ff4444', border: '1px solid #ff4444', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem'}}
+        >
+          Delete Group
+        </button>
+      </div>
+      <button onClick={() => setFocusedGroupId(null)} style={{background:'none', border:'none', color:'var(--text-dim)', cursor:'pointer'}}>Close Group View ×</button>
+    </div>
+    {/* ... rest of the EditableRow for description ... */}
+  </div>
+)}
+
+                      <CharacterForm onAddCharacter={(c) => addToActiveWorld('characters', c)} />
+
+                      {(() => {
+                        const charactersToShow = focusedGroupId 
+                          ? activeWorld.data.characters.filter(c => c.groupIds?.includes(focusedGroupId))
+                          : activeWorld.data.characters;
+
+                        return (
+                          <div className="grid">
+                            {charactersToShow.map(char => (
+  <div key={char.id} id={char.id} className="card">
+    <button className="card-delete" onClick={() => deleteEntry('characters', char.id)}>×</button>
+    
+    <h3>
+      <EditableRow 
+        item={char} 
+        field="name" 
+        searchQuery={searchQuery} 
+        onSave={(d) => updateEntry('characters', char.id, d)} 
+      />
+    </h3>
+
+    <div className="char-meta-row" style={{ display: 'flex', gap: '15px', fontSize: '0.85rem', marginBottom: '10px' }}>
+      <div style={{ flex: 1 }}>
+        <strong style={{ color: 'var(--accent)' }}>Age:</strong>
+        <EditableRow 
+          item={char} 
+          field="age" 
+          onSave={(d) => updateEntry('characters', char.id, d)} 
+        />
+      </div>
+      <div style={{ flex: 2 }}>
+        <strong style={{ color: 'var(--accent)' }}>Job:</strong>
+        <EditableRow 
+          item={char} 
+          field="profession" 
+          onSave={(d) => updateEntry('characters', char.id, d)} 
+        />
+      </div>
+    </div>
+
+    {/* ... GroupTags ... */}
+
+    <div className="card-bio">
+      <EditableRow 
+        item={char} 
+        field="description" 
+        isMultiline={true} 
+        searchQuery={searchQuery} 
+        linkRegistry={linkRegistry}   // ADD THIS
+        onLinkClick={navigateToEntry}  // ADD THIS
+        onSave={(d) => updateEntry('characters', char.id, d)} 
+      />
+    </div>
+  </div>
+))}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
+
                   {selectedModule === "locations" && (
                     <>
                       <LocationForm onAddLocation={(l) => addToActiveWorld('locations', l)} />
@@ -440,6 +712,7 @@ function App() {
                       </div>
                     </>
                   )}
+
                   {selectedModule === "lore" && (
                     <>
                       <LoreForm onAddLore={(l) => addToActiveWorld('lore', l)} />
@@ -455,16 +728,26 @@ function App() {
                       </div>
                     </>
                   )}
+
                   {selectedModule === "story" && (
-                    <>
-                      <StoryForm onAddStoryBeat={(s) => addToActiveWorld('story', s)} />
-                      <div className="timeline">
-                        {activeWorld.data.story.map((beat, i) => (
-                          <StoryBeat key={beat.id} beat={beat} index={i} searchQuery={searchQuery} linkRegistry={linkRegistry} navigateToEntry={navigateToEntry} updateEntry={updateEntry} deleteEntry={deleteEntry} />
-                        ))}
-                      </div>
-                    </>
-                  )}
+  <>
+    <StoryForm onAddStoryBeat={(s) => addToActiveWorld('story', s)} />
+    <div className="timeline">
+      {activeWorld.data.story.map((beat, i) => (
+        <StoryBeat 
+          key={beat.id} 
+          beat={beat} 
+          index={i} 
+          searchQuery={searchQuery} 
+          linkRegistry={linkRegistry}   // Ensure this is passed
+          navigateToEntry={navigateToEntry} 
+          updateEntry={updateEntry} 
+          deleteEntry={deleteEntry} 
+        />
+      ))}
+    </div>
+  </>
+)}
                 </div>
               )}
             </div>
@@ -475,6 +758,6 @@ function App() {
       <GlobalQuickAdd isOpen={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} onAdd={addToActiveWorld} />
     </div>
   );
-}
+} // Ends App Component
 
 export default App;

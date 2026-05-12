@@ -6,19 +6,19 @@ function LoreForm({ onAddLore }) {
   const [content, setContent] = useState("");
 
   function handleSubmit(e) {
-    e.preventDefault();
-    if (!title.trim()) return;
+  e.preventDefault();
+  if (!title.trim()) return;
 
-    onAddLore({
-      id: crypto.randomUUID(),
-      title,
-      category,
-      content
-    });
+  onAddLore({
+    id: crypto.randomUUID(),
+    name: title, // Changed from 'title' to 'name'
+    category,
+    content
+  });
 
-    setTitle("");
-    setContent("");
-  }
+  setTitle("");
+  setContent("");
+}
 
   return (
     <form onSubmit={handleSubmit} style={{ marginBottom: "20px" }}>

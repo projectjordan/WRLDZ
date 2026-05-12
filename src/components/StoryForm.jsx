@@ -5,22 +5,22 @@ function StoryForm({ onAddStoryBeat }) {
   const [content, setContent] = useState("");
   const [order, setOrder] = useState(1);
 
-  function handleSubmit(e) {
+ function handleSubmit(e) {
     e.preventDefault();
     if (!title.trim()) return;
 
     onAddStoryBeat({
       id: crypto.randomUUID(),
-      title,
+      name: title, // Changed from 'title' to 'name' to match the registry
       content,
       order: Number(order)
     });
 
     setTitle("");
     setContent("");
-    setOrder(prev => Number(prev) + 1); // Auto-increment for the next beat
+    setOrder(prev => Number(prev) + 1);
   }
-
+  
   return (
   <form onSubmit={handleSubmit} style={{ 
     marginBottom: "20px", 
